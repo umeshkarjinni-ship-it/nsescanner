@@ -1,0 +1,46 @@
+name: NSE Daily Scanner
+
+on:
+  schedule:
+    # 11:00 AM IST = 05:30 UTC, Monday-Friday (NSE trading days).
+    # GitHub Actions cron is always UTC — adjust the first two numbers
+    # (minute hour) if you want a different IST time. Example: for 6:00 PM
+    # IST use '30 12 * * 1-5'.
+    - cron: '30 5 * * 1-5'
+  workflow_dispatch: {}   # lets you manually trigger a run from the Actions tab
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150   # generous ceiling; the ~140-stock starter list
+                            # takes a few minutes, a full ~1500-stock
+                            # universe can take well over an hour
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run NSE scanner
+        env:
+          SCANNER_EMAIL_FROM: ${{ secrets.SCANNER_EMAIL_FROM }}
+          SCANNER_EMAIL_TO: ${{ secrets.SCANNER_EMAIL_TO }}
+          SCANNER_EMAIL_APP_PASSWORD: ${{ secrets.SCANNER_EMAIL_APP_PASSWORD }}
+        run: python nse_scanner.py
+
+      # Keeps the full CSV (all signals, not just the emailed top 20) and
+      # failed_symbols.csv available to download from the Actions run page,
+      # even though nothing is committed back to the repo.
+      - name: Upload full results as a workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nse-scan-results-${{ github.run_id }}
+          path: signals/
+          retention-days: 30
